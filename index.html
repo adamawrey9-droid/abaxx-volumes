@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abaxx Exchange — Daily Volume Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="abaxx_volumes.js"></script>
+<style>
+:root {
+  --bg-primary:    #111318;
+  --bg-secondary:  #1A1F27;
+  --bg-card:       #212830;
+  --bg-elevated:   #2A323C;
+  --bg-hover:      #323C48;
+  --bg-input:      #181D24;
+  --gold:          #DB9900;
+  --gold-hover:    #B27328;
+  --gold-light:    #F5CC66;
+  --gold-dim:      rgba(219,153,0,0.15);
+  --gold-border:   rgba(219,153,0,0.3);
+  --text-primary:  #E8E4F0;
+  --text-secondary:#9BA0A5;
+  --text-muted:    #6B7280;
+  --green:         #5BB870;
+  --red:           #E06060;
+  --border:        rgba(255,255,255,0.06);
+  --border-light:  rgba(255,255,255,0.1);
+  --shadow:        0 2px 8px rgba(0,0,0,0.3);
+  --radius:        8px;
+  --radius-lg:     12px;
+  --font-serif:    'DM Serif Display', Georgia, serif;
+  --font-sans:     'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body { font-family: var(--font-sans); background: var(--bg-primary); color: var(--text-primary); line-height: 1.6; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+a { color: var(--gold); text-decoration: none; }
+a:hover { color: var(--gold-light); }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 3px; }
+
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 1.5rem; height: 56px;
+  background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.logo { font-family: var(--font-serif); font-size: 1.3rem; color: var(--gold); display: flex; align-items: center; gap: 0.5rem; }
+.logo-sub { font-family: var(--font-sans); font-size: 0.68rem; font-weight: 300; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-muted); }
+.header-right { font-size: 0.72rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
+.dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 4px var(--green); display: inline-block; }
+
+.main { padding: 1.5rem; max-width: 1440px; margin: 0 auto; }
+
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; }
+.pm-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 0.9rem 1rem; }
+
+.btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; border-radius: var(--radius); font-family: var(--font-sans); font-size: 0.82rem; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.2s; }
+.btn-secondary { background: transparent; color: var(--text-secondary); border-color: var(--border-light); }
+.btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); }
+.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.75rem; }
+
+.filter-search { background: var(--bg-input); border: 1px solid var(--border-light); border-radius: 20px; padding: 0.3rem 0.75rem; color: var(--text-primary); font-size: 0.8rem; outline: none; width: 260px; font-family: var(--font-sans); }
+.filter-search:focus { border-color: var(--gold); }
+.filter-search::placeholder { color: var(--text-muted); }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; color: var(--text-muted); text-align: center; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+/* ================================================================
+   VOLUME CHART
+   ================================================================ */
+function VolumeChart({ rows }) {
+  const [hover, setHover] = React.useState(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const sorted = (rows || []).slice()
+    .filter(r => r.trade_date < today)
+    .sort((a,b) => (a.trade_date||'').localeCompare(b.trade_date||''));
+  if (sorted.length < 2) return null;
+
+  const vols = sorted.map(r => r.volume || 0);
+  const maxVol = Math.max(...vols, 1);
+  const W = 600, H = 140;
+  const pad = {t:14, r:14, b:32, l:52};
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+  const n = sorted.length;
+  const px = i => pad.l + (n > 1 ? (i / (n-1)) * iW : iW/2);
+  const py = v => pad.t + iH - (v / maxVol) * iH;
+  const pts = sorted.map((r,i) => `${px(i).toFixed(1)},${py(r.volume||0).toFixed(1)}`);
+  const linePath = 'M ' + pts.join(' L ');
+  const areaPath = `M ${pad.l},${pad.t+iH} L ${pts.join(' L ')} L ${px(n-1)},${pad.t+iH} Z`;
+  const yTicks = [0,0.25,0.5,0.75,1].map(f => ({v:Math.round(maxVol*f), y:pad.t+iH*(1-f)}));
+  const step = Math.max(1, Math.floor(n / 6));
+
+  return (
+    <div style={{position:'relative'}} onMouseLeave={()=>setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',overflow:'visible',display:'block'}}>
+        {yTicks.map(t => (
+          <g key={t.v}>
+            <line x1={pad.l} x2={W-pad.r} y1={t.y} y2={t.y} stroke="var(--border)" strokeWidth={0.5} strokeDasharray="3,2"/>
+            <text x={pad.l-5} y={t.y+3.5} textAnchor="end" style={{fontSize:8,fill:'var(--text-muted)',fontFamily:'var(--font-sans)'}}>
+              {t.v>=1000?(t.v/1000).toFixed(t.v%1000===0?0:1)+'k':t.v}
+            </text>
+          </g>
+        ))}
+        <path d={areaPath} fill="var(--gold)" opacity={0.1}/>
+        <path d={linePath} fill="none" stroke="var(--gold)" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round"/>
+        {sorted.map((r,i) => (
+          <circle key={r.trade_date} cx={px(i)} cy={py(r.volume||0)} r={5} fill="transparent"
+            onMouseEnter={()=>setHover({i,r,cx:px(i),cy:py(r.volume||0)})}/>
+        ))}
+        {hover && <circle cx={hover.cx} cy={hover.cy} r={3.5} fill="var(--gold)" stroke="var(--bg-primary)" strokeWidth={1.5}/>}
+        {sorted.map((r,i) => (i%step===0||i===n-1) ? (
+          <text key={r.trade_date} x={px(i)} y={H-pad.b+12} textAnchor="middle"
+            style={{fontSize:7.5,fill:'var(--text-muted)',fontFamily:'var(--font-sans)'}}>
+            {r.trade_date.slice(5)}
+          </text>
+        ) : null)}
+        {hover && (() => {
+          const tx = Math.min(Math.max(hover.cx, pad.l+38), W-pad.r-38);
+          const ty = Math.max(hover.cy-34, pad.t);
+          return (
+            <g>
+              <rect x={tx-38} y={ty} width={76} height={26} rx={4} fill="var(--bg-primary)" stroke="var(--border)" strokeWidth={1}/>
+              <text x={tx} y={ty+11} textAnchor="middle" style={{fontSize:8,fill:'var(--gold)',fontWeight:700,fontFamily:'var(--font-sans)'}}>{hover.r.trade_date}</text>
+              <text x={tx} y={ty+22} textAnchor="middle" style={{fontSize:8,fill:'var(--text-primary)',fontFamily:'var(--font-sans)'}}>{Number(hover.r.volume||0).toLocaleString()} lots</text>
+            </g>
+          );
+        })()}
+      </svg>
+    </div>
+  );
+}
+
+/* ================================================================
+   MAIN APP
+   ================================================================ */
+function App() {
+  const [tick, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const reload = () => {
+      const old = document.querySelector('script[data-av]');
+      if (old) old.remove();
+      const s = document.createElement('script');
+      s.setAttribute('data-av','1');
+      s.src = 'abaxx_volumes.js?t=' + Date.now();
+      s.onload = () => setTick(t => t+1);
+      document.head.appendChild(s);
+    };
+    const id = setInterval(reload, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const allRows = (window.ABAXX_VOLUMES || []).slice();
+  const updated = window.ABAXX_VOLUMES_UPDATED || null;
+  const [search, setSearch] = React.useState('');
+  const [productFilter, setProductFilter] = React.useState('All');
+  const [tradedOnly, setTradedOnly] = React.useState(true);
+  const [selected, setSelected] = React.useState(null);
+
+  const fmtVol = v => v != null ? Number(v).toLocaleString() : '—';
+  const fmtPx  = v => v != null ? '$' + Number(v).toFixed(2) : '—';
+  const fmtChg = v => {
+    if (v == null) return '—';
+    const n = Number(v);
+    const color = n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--text-muted)';
+    return <span style={{color, fontWeight:600}}>{n > 0 ? '+' : ''}{n.toFixed(2)}</span>;
+  };
+  const baseCode = sym => {
+    const m = (sym||'').match(/^([A-Z0-9]{2,5})[FGHJKMNQUVXZ]\d{2}$/);
+    return m ? m[1] : sym;
+  };
+
+  const TH = ({c,right}) => <th style={{background:'var(--bg-secondary)',color:'var(--text-muted)',fontSize:'10.5px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.8px',padding:'10px 14px',textAlign:right?'right':'left',whiteSpace:'nowrap'}}>{c}</th>;
+  const Row = ({k,v}) => (
+    <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:12.5,borderBottom:'1px solid var(--border)'}}>
+      <span style={{color:'var(--text-muted)'}}>{k}</span>
+      <span style={{color:'var(--text-primary)',fontWeight:500}}>{v!=null?v:'—'}</span>
+    </div>
+  );
+
+  const productVolumes = {};
+  allRows.forEach(r => {
+    if (r.volume) {
+      const p = baseCode(r.contract_code);
+      productVolumes[p] = (productVolumes[p]||0) + (r.volume||0);
+    }
+  });
+  const productCodes = ['All', ...Object.keys(productVolumes).sort((a,b)=>productVolumes[b]-productVolumes[a])];
+
+  const sorted = allRows.slice().sort((a,b) => {
+    const dd = (b.trade_date||'').localeCompare(a.trade_date||'');
+    return dd !== 0 ? dd : (b.volume||0) - (a.volume||0);
+  });
+
+  const filtered = sorted.filter(r => {
+    if (tradedOnly && !r.volume) return false;
+    if (productFilter !== 'All' && baseCode(r.contract_code) !== productFilter) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (r.contract_code||'').toLowerCase().includes(q) ||
+           (r.contract_name||'').toLowerCase().includes(q) ||
+           (r.trade_date||'').includes(q);
+  });
+
+  const latestDate = allRows.length ? allRows.reduce((a,b) => a.trade_date > b.trade_date ? a : b).trade_date : null;
+
+  if (!updated) return (
+    <div>
+      <header className="header">
+        <div className="logo">Abaxx Exchange <span className="logo-sub">Volume Tracker</span></div>
+      </header>
+      <div className="main">
+        <div className="empty-state"><p>No data available yet.</p></div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <header className="header">
+        <div className="logo">
+          Abaxx Exchange
+          <span className="logo-sub">Volume Tracker</span>
+        </div>
+        <div className="header-right">
+          <span className="dot-live"></span>
+          Updated {updated}{latestDate ? ` · Latest: ${latestDate}` : ''}
+        </div>
+      </header>
+
+      <div className="main">
+
+        {/* Summary cards */}
+        {productFilter === 'All' && Object.keys(productVolumes).length > 0 && (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))',gap:'0.6rem',marginBottom:'1rem'}}>
+            {Object.entries(productVolumes).sort((a,b)=>b[1]-a[1]).map(([code,total]) => (
+              <div key={code} className="card" style={{padding:'0.75rem 1rem',cursor:'pointer',borderColor:productFilter===code?'var(--gold)':'var(--border)'}}
+                onClick={()=>{setProductFilter(code);setSelected(null);}}>
+                <div style={{fontSize:'0.72rem',color:'var(--text-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4}}>{code}</div>
+                <div style={{fontSize:'1.15rem',fontWeight:700,color:'var(--gold)'}}>{Number(total).toLocaleString()}</div>
+                <div style={{fontSize:'0.68rem',color:'var(--text-muted)'}}>total contracts</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Filter bar */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.75rem',flexWrap:'wrap',gap:'0.5rem'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap'}}>
+            {productCodes.map(c => (
+              <button key={c} onClick={()=>{setProductFilter(c);setSelected(null);}}
+                style={{padding:'4px 14px',borderRadius:20,fontSize:12,fontWeight:600,cursor:'pointer',border:'1px solid var(--border)',
+                  background:productFilter===c?'var(--gold)':'transparent',
+                  color:productFilter===c?'#000':'var(--text-muted)',transition:'all 0.15s'}}>
+                {c==='All'?'All Products':c}
+              </button>
+            ))}
+            <button onClick={()=>{setTradedOnly(t=>!t);setSelected(null);}}
+              style={{padding:'4px 14px',borderRadius:20,fontSize:12,fontWeight:600,cursor:'pointer',border:'1px solid var(--border)',
+                background:tradedOnly?'var(--green)':'transparent',
+                color:tradedOnly?'#000':'var(--text-muted)',transition:'all 0.15s'}}>
+              Traded Only
+            </button>
+          </div>
+          <input className="filter-search" value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Search contract, date..."/>
+        </div>
+
+        {filtered.length === 0 && (
+          <div className="empty-state"><p>No data matches your filter.</p></div>
+        )}
+
+        {filtered.length > 0 && (
+          <div style={{overflowX:'auto',borderRadius:10,border:'1px solid var(--border)',marginBottom:'1.25rem'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12.5px',fontFamily:'var(--font-sans)'}}>
+              <thead><tr style={{borderBottom:'1px solid var(--border-light)'}}>
+                <TH c="Date"/><TH c="Contract"/><TH c="Product Name"/><TH c="Volume" right/><TH c="OI" right/><TH c="Open" right/><TH c="High" right/><TH c="Low" right/><TH c="Close" right/><TH c="Settle" right/><TH c="Chg" right/>
+              </tr></thead>
+              <tbody>
+                {filtered.map(r => {
+                  const key = `${r.trade_date}|${r.contract_code}`;
+                  const isSel = selected && `${selected.trade_date}|${selected.contract_code}` === key;
+                  return (
+                    <React.Fragment key={key}>
+                      <tr onClick={()=>setSelected(isSel?null:r)}
+                        style={{borderBottom:isSel?'none':'1px solid var(--border)',cursor:'pointer',background:isSel?'rgba(219,153,0,0.07)':'',transition:'background 0.15s'}}
+                        onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='var(--bg-hover)'}}
+                        onMouseLeave={e=>{e.currentTarget.style.background=isSel?'rgba(219,153,0,0.07)':''}}>
+                        <td style={{padding:'9px 14px',color:'var(--text-muted)',whiteSpace:'nowrap'}}>{r.trade_date}</td>
+                        <td style={{padding:'9px 14px',whiteSpace:'nowrap',color:'var(--gold)',fontWeight:700}}>{r.contract_code||'—'}</td>
+                        <td style={{padding:'9px 14px',color:'var(--text-secondary)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.contract_name||'—'}</td>
+                        <td style={{padding:'9px 14px',color:r.volume?'var(--text-primary)':'var(--text-muted)',fontWeight:r.volume?600:400,whiteSpace:'nowrap',textAlign:'right'}}>{fmtVol(r.volume)}</td>
+                        <td style={{padding:'9px 14px',color:'var(--text-secondary)',whiteSpace:'nowrap',textAlign:'right'}}>{fmtVol(r.open_interest)}</td>
+                        <td style={{padding:'9px 14px',color:'var(--text-secondary)',whiteSpace:'nowrap',textAlign:'right'}}>{fmtPx(r.open_price)}</td>
+                        <td style={{padding:'9px 14px',color:r.high_price?'var(--green)':'var(--text-muted)',whiteSpace:'nowrap',textAlign:'right'}}>{fmtPx(r.high_price)}</td>
+                        <td style={{padding:'9px 14px',color:r.low_price?'var(--red)':'var(--text-muted)',whiteSpace:'nowrap',textAlign:'right'}}>{fmtPx(r.low_price)}</td>
+                        <td style={{padding:'9px 14px',color:'var(--text-secondary)',whiteSpace:'nowrap',textAlign:'right'}}>{fmtPx(r.close_price)}</td>
+                        <td style={{padding:'9px 14px',color:'var(--text-secondary)',whiteSpace:'nowrap',textAlign:'right'}}>{fmtPx(r.settlement_price)}</td>
+                        <td style={{padding:'9px 14px',whiteSpace:'nowrap',textAlign:'right'}}>{fmtChg(r.price_change)}</td>
+                      </tr>
+                      {isSel && (
+                        <tr style={{borderBottom:'1px solid var(--border)'}}>
+                          <td colSpan={11} style={{padding:'0 0 1px 0',background:'var(--bg-secondary)'}}>
+                            <div style={{padding:'1rem 1.25rem 1.25rem',borderTop:'1px solid var(--border-light)'}}>
+                              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'0.85rem'}}>
+                                <div>
+                                  <span style={{fontSize:16,fontWeight:700,color:'#fff'}}>{r.contract_code}</span>
+                                  <span style={{fontSize:13,color:'var(--text-muted)',marginLeft:8}}>{r.contract_name}</span>
+                                  <div style={{fontSize:11,color:'var(--text-muted)',marginTop:3}}>Trade date: {r.trade_date}</div>
+                                </div>
+                                <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation();setSelected(null);}}>✕</button>
+                              </div>
+                              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
+                                <div className="pm-card">
+                                  <div style={{fontSize:10,fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:8,paddingBottom:6,borderBottom:'1px solid var(--border)'}}>Session Data</div>
+                                  <Row k="Volume" v={fmtVol(r.volume)}/>
+                                  <Row k="Open Interest" v={fmtVol(r.open_interest)}/>
+                                  <Row k="Open" v={fmtPx(r.open_price)}/>
+                                  <Row k="High" v={fmtPx(r.high_price)}/>
+                                  <Row k="Low" v={fmtPx(r.low_price)}/>
+                                  <Row k="Close" v={fmtPx(r.close_price)}/>
+                                  <Row k="Settlement" v={fmtPx(r.settlement_price)}/>
+                                  {r.price_change != null && <Row k="Change" v={(r.price_change>0?'+':'')+Number(r.price_change).toFixed(2)}/>}
+                                </div>
+                                <div className="pm-card">
+                                  <div style={{fontSize:10,fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:8,paddingBottom:6,borderBottom:'1px solid var(--border)'}}>Product Total (Q2 2026)</div>
+                                  <Row k="Total Volume" v={fmtVol(productVolumes[baseCode(r.contract_code)])}/>
+                                  <Row k="Product Code" v={baseCode(r.contract_code)}/>
+                                  <Row k="Contract" v={r.contract_name||r.contract_code}/>
+                                  <Row k="Source" v={<a href="https://abaxx.exchange/market-data" target="_blank" style={{color:'var(--gold)'}}>Abaxx Exchange</a>}/>
+                                </div>
+                              </div>
+                              {(() => {
+                                const chartRows = allRows.filter(x => x.contract_code === r.contract_code);
+                                return chartRows.length > 0 ? (
+                                  <div className="pm-card" style={{marginTop:'0.75rem'}}>
+                                    <div style={{fontSize:10,fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:10,paddingBottom:6,borderBottom:'1px solid var(--border)'}}>
+                                      Volume History — {r.contract_code}
+                                    </div>
+                                    <VolumeChart rows={chartRows}/>
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center',marginTop:'1rem'}}>
+          Data sourced from <a href="https://abaxx.exchange/market-data" target="_blank">abaxx.exchange</a> · Updated daily after settlement
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
